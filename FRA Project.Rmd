@@ -1,0 +1,830 @@
+---
+title: "FRA project"
+author: "Jyosmitha"
+date: "9/29/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+setwd("C:/Users/ammu/Desktop/Great Lakes/9. FRA/Project")
+getwd()
+```
+
+```{r}
+library(readxl)
+library(DataExplorer)
+library(stats)
+library(caret)
+library(pROC)
+library(car)
+library(caTools)
+library(dplyr)
+library(ggplot2)
+library(reshape)
+library(data.table())
+library(scales)
+```
+
+
+```{r cars}
+Train=read_excel("raw-data.xlsx")
+Validation=read_excel("validation_data.xlsx")
+```
+
+```{r}
+names(Train)
+dim(Train)
+```
+
+```{r}
+names(Validation)
+dim(Validation)
+```
+
+```{r}
+#null values check for Train Dataset
+anyNA(Train)
+sum(is.na(Train))
+sum(rowSums(is.na(Train)))
+sum(colSums(is.na(Train)))
+
+#null values check for Validation Dataset
+anyNA(Validation)
+sum(is.na(Validation))
+sum(rowSums(is.na(Validation)))
+sum(colSums(is.na(Validation)))
+```
+
+```{r}
+#structure
+str(Train)
+str(Validation)
+```
+
+```{r}
+#summary
+summary(Train)
+summary(Validation)
+```
+
+```{r}
+#attaching the column names
+attach(Train)
+```
+
+```{r}
+#Converting Char columns into numeric of train dataset
+Train$`Creditors turnover`=as.numeric(Train$`Creditors turnover`)
+Train$`Equity face value`=as.numeric(Train$`Equity face value`)
+Train$`Shares outstanding`=as.numeric(Train$`Shares outstanding`)
+Train$`Raw material turnover`=as.numeric(Train$`Raw material turnover`)
+Train$`WIP turnover`=as.numeric(Train$`WIP turnover`)
+Train$`Finished goods turnover`=as.numeric(Train$`Finished goods turnover`)
+Train$`Debtors turnover`=as.numeric(Train$`Debtors turnover`)
+Train$`Creditors turnover`=as.numeric(Train$`Creditors turnover`)
+Train$`PE on BSE`=as.numeric(Train$`PE on BSE`)
+
+#Converting Char columns into numeric of Validation dataset
+Validation$`Creditors turnover`=as.numeric(Validation$`Creditors turnover`)
+Validation$`Equity face value`=as.numeric(Validation$`Equity face value`)
+Validation$`Shares outstanding`=as.numeric(Validation$`Shares outstanding`)
+Validation$`Raw material turnover`=as.numeric(Validation$`Raw material turnover`)
+Validation$`WIP turnover`=as.numeric(Validation$`WIP turnover`)
+Validation$`Finished goods turnover`=as.numeric(Validation$`Finished goods turnover`)
+Validation$`Debtors turnover`=as.numeric(Validation$`Debtors turnover`)
+Validation$`Creditors turnover`=as.numeric(Validation$`Creditors turnover`)
+Validation$`PE on BSE`=as.numeric(Validation$`PE on BSE`)
+```
+
+```{r}
+#null values in all columns in train dataset
+na_countTrain <-sapply(Train, function(y) sum(length(which(is.na(y)))))
+na_countTrain <- data.frame(na_countTrain)
+na_countTrain
+
+#null values in all columns in Validation dataset
+na_countValidation <-sapply(Validation, function(y) sum(length(which(is.na(y)))))
+na_countValidation <- data.frame(na_countValidation)
+na_countValidation
+```
+
+```{r}
+#dropping Num and Deposits (accepted by commercial banks)  and num columnss
+Train=Train[ ,-c(1,22)]
+Validation=Validation[ ,-c(1,22)]
+```
+
+```{r}
+#converting NetworthNextYearColumn into categorical
+Train$`Networth Next Year`= ifelse(Train$`Networth Next Year` >=0,0,1)
+```
+
+
+```{r}
+#renaming columns
+names(Train)[names(Train) == "Networth Next Year"] <- "Default"
+names(Validation)[names(Validation) == "Default - 1"] <- "Default"
+names(Train)=make.names(names(Train))
+names(Validation)=make.names(names(Validation))
+```
+
+```{r}
+data.frame(table(Train$Default))
+data.frame(table(Validation$Default))
+```
+
+
+```{r}
+prop.table(table(Train$Default))
+prop.table(table(Validation$Default))
+```
+
+
+
+```{r}
+plot_missing(Train)
+plot_missing(Validation)
+```
+
+
+```{r, echo=FALSE}
+#Outlier Treatment for Train Data. below 5th quartile and above 95 quartile are chose 
+Outliers <- function(x){
+  quantiles <- quantile( x, c(.05, .95 ),na.rm = TRUE )
+  result <- length(which(x[ x < quantiles[1] ]| x[ x > quantiles[2] ]))
+  cat("\nNumber of outliers:",result)
+  x[ x < quantiles[1] ] <- quantiles[1]
+  x[ x > quantiles[2] ] <- quantiles[2]
+  cat("\nLower Bound",quantiles[1])
+  cat("\nUpper Bound",quantiles[2])
+  return(x)
+}
+
+#capping outlilers with for all columns and checking before and after imputation summary for each column for Train Data. 
+col=names(Train)
+for (i in (2:length(col))) {
+  cat("\n\nColumn Name:",col[i])
+  cat("\n\nSummary Before Imputation:\n",summary(Train[i]))
+  Train[i]=Outliers(Train[i])
+  cat("\nSummary After Imputation:\n",summary(Train[i]))
+}
+```
+
+
+```{r, echo=FALSE}
+#Outlier Treatment for Validation Data. below 5th quartile and above 95 quartile are chose 
+Outliers <- function(x){
+  quantiles <- quantile( x, c(.05, .95 ),na.rm = TRUE )
+  result <- length(which(x[ x < quantiles[1] ]| x[ x > quantiles[2] ]))
+  cat("\nNumber of outliers:",result)
+  x[ x < quantiles[1] ] <- quantiles[1]
+  x[ x > quantiles[2] ] <- quantiles[2]
+  cat("\nLower Bound",quantiles[1])
+  cat("\nUpper Bound",quantiles[2])
+  return(x)
+}
+
+#capping outlilers with for all columns and checking before and after imputation summary for each column for Validation Data. 
+
+for (i in (2:length(col))) {
+  cat("\n\nColumn Name:",col[i])
+  cat("\n\nSummary Before Imputation:\n",summary(Validation[i]))
+  Validation[i]=Outliers(Validation[i])
+  cat("\nSummary After Imputation:\n",summary(Validation[i]))
+}
+
+
+```
+
+
+```{r}
+#imputing missing values with median for train and validation dataset
+
+NA2Median <- function(x) replace(x, is.na(x), median(x, na.rm = TRUE))
+Train=replace(Train, TRUE, lapply(Train, NA2Median))
+Validation=replace(Validation, TRUE, lapply(Validation, NA2Median))
+
+```
+
+```{r}
+#converting variables as factors
+Train$Default =as.factor(Train$Default)
+Validation$Default=as.factor(Validation$Default)
+```
+
+
+```{r}
+#checking for existence of missing values
+anyNA(Train)
+anyNA(Validation)
+```
+
+```{r}
+#creating new variables in TrainDataset
+
+#profitability
+Train$Profitability=Train$Profit.after.tax/Train$Sales
+Train$PriceperShare=Train$EPS*Train$PE.on.BSE
+
+#Liquidity
+Train$NetWC2TotAsset=Train$Net.working.capital /Train$Total.assets
+Train$Currentliabilities2Assets=Train$Current.liabilities...provisions/Train$Total.assets
+Train$CapitalEmployed2TotalAssets=Train$Capital.employed/Train$Total.assets
+Train$TotalLiability2TotalAssets=Train$Total.liabilities/Train$Total.assets
+Train$Liability2Asset=Train$Current.liabilities...provisions /Train$Total.assets
+
+#Leverage
+Train$TotalIncome2TotalAssets=Train$Total.income/Train$Total.assets
+Train$NetWC2TotAsset=Train$Net.working.capital /Train$Total.assets
+
+#Size
+Train$NetWorth2TotAssets=Train$Net.worth/Train$Total.assets
+Train$Total.expenses2TotalAssets=Train$Total.expenses/Train$Total.assets
+Train$PAT2TotalAssets=Train$Profit.after.tax/Train$Total.assets
+Train$PBT2TotalAssets=Train$PBT/Train$Total.assets
+Train$Sales2TotalAssets=Train$Sales/Train$Total.assets
+Train$NetfixedAssets2TotalAssets=Train$Net.fixed.assets/Train$Total.assets
+Train$Investments2TotalAssets=Train$Investments/Train$Total.assets
+
+
+```
+
+
+```{r}
+#creating new variables in Validation Dataset
+#profitability
+Validation$Profitability=Validation$Profit.after.tax/Validation$Sales
+Validation$PriceperShare=Validation$EPS*Validation$PE.on.BSE
+
+#Liquidity
+Validation$NetWC2TotAsset=Validation$Net.working.capital /Validation$Total.assets
+Validation$Currentliabilities2Assets=Validation$Current.liabilities...provisions/Validation$Total.assets
+Validation$CapitalEmployed2TotalAssets=Validation$Capital.employed/Validation$Total.assets
+Validation$TotalLiability2TotalAssets=Validation$Total.liabilities/Validation$Total.assets
+Validation$Liability2Asset=Validation$Current.liabilities...provisions /Validation$Total.assets
+
+#Leverage
+Validation$TotalIncome2TotalAssets=Validation$Total.income/Validation$Total.assets
+Validation$NetWC2TotAsset=Validation$Net.working.capital /Validation$Total.assets
+
+#Size
+Validation$NetWorth2TotAssets=Validation$Net.worth/Validation$Total.assets
+Validation$Total.expenses2TotalAssets=Validation$Total.expenses/Validation$Total.assets
+Validation$PAT2TotalAssets=Validation$Profit.after.tax/Validation$Total.assets
+Validation$PBT2TotalAssets=Validation$PBT/Validation$Total.assets
+Validation$Sales2TotalAssets=Validation$Sales/Validation$Total.assets
+Validation$NetfixedAssets2TotalAssets=Validation$Net.fixed.assets/Validation$Total.assets
+Validation$Investments2TotalAssets=Validation$Investments/Validation$Total.assets
+```
+
+
+```{r}
+#multicollinearity
+LogModel=glm(Default~.,data=Train[, -c(49,64,65)],family="binomial")
+summary(LogModel)
+```
+
+```{r}
+#Univariate Analysis of Train Dataset
+plot_histogram(Train)
+plot_density(Train)
+
+```
+
+```{r}
+set1=Train[ ,c(1,2,3,4,5,6,7)]
+set2=Train[ ,c(8,9,10,11,12,13,14)]
+set3=Train[ ,c(15,16,17,18,19,20,21)]
+set4=Train[ ,c(22,23,24,25,26,27,28)]
+set5=Train[ ,c(29,30,31,32,33,34,35)]
+set6=Train[ ,c(36,37,38,39,40,41,42)]
+set7=Train[ ,c(43,44,45,46,47,48,49)]
+set8=Train[ ,c(50,51,52,53,54,55,56)]
+set9=Train[ ,c(57,58,59,60,61,62,63,64,65)]
+```
+
+
+```{r}
+temp1=melt(set1)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+temp1=melt(set2)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+temp1=melt(set3)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+temp1=melt(set4)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+temp1=melt(set5)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+temp1=melt(set6)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+temp1=melt(set7)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+temp1=melt(set8)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+
+temp1=melt(set9)
+temp2=ggplot(temp1,aes(y=value))
+temp1=as.data.frame(temp1)
+chart=temp2+geom_boxplot()+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+```
+
+
+```{r}
+#bivariate Analysis
+set1=Train[ ,c(1,2,3,4,5,6,7)]
+set2=Train[ ,c(1,8,9,10,11,12,13,14)]
+set3=Train[ ,c(1,15,16,17,18,19,20,21)]
+set4=Train[ ,c(1,22,23,24,25,26,27,28)]
+set5=Train[ ,c(1,29,30,31,32,33,34,35)]
+set6=Train[ ,c(1,36,37,38,39,40,41,42)]
+set7=Train[ ,c(1,43,44,45,46,47,48,49)]
+set8=Train[ ,c(1,50,51,52,53,54,55,56,64)]
+set9=Train[ ,c(1,57,58,59,60,61,62,63,65)]
+
+```
+
+
+```{r}
+
+#set1
+set1=as.data.frame(set1)
+set1melt=melt(set1,id="Default")
+gb=ggplot(set1melt,aes(y=value))
+chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+#set2
+#names(set2)
+#set2=as.data.frame(set2)
+#set2=cbind(set2,Train$Default)
+#set2melt=melt(set2,id="Default")
+#gb=ggplot(set2melt,aes(y=value))
+#chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+ # facet_wrap(~variable,scales = "free_y",nrow = 2 )
+#chart
+
+#set3
+set3=as.data.frame(set3)
+set3melt=melt(set3,id="Default")
+gb=ggplot(set3melt,aes(y=value))
+chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+#set4
+set4=as.data.frame(set4)
+set4melt=melt(set4,id="Default")
+gb=ggplot(set4melt,aes(y=value))
+chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+#set5
+set5=as.data.frame(set5)
+set5melt=melt(set5,id="Default")
+gb=ggplot(set5melt,aes(y=value))
+chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+#set6
+set6=as.data.frame(set6)
+set6melt=melt(set6,id="Default")
+gb=ggplot(set6melt,aes(y=value))
+chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+#set7
+set7=as.data.frame(set7)
+set7melt=melt(set7,id="Default")
+gb=ggplot(set7melt,aes(y=value))
+chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+#set8
+set8=as.data.frame(set8)
+set8melt=melt(set8,id="Default")
+gb=ggplot(set8melt,aes(y=value))
+chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+
+#set9
+set9=as.data.frame(set9)
+set9melt=melt(set9,id="Default")
+gb=ggplot(set9melt,aes(y=value))
+chart=gb+geom_boxplot(aes(x=Default,color=Default ))+
+  facet_wrap(~variable,scales = "free_y",nrow = 2 )
+chart
+```
+```{r}
+
+#set1
+gb=ggplot(set1melt,aes(value))
+chart=gb+geom_density(aes(fill=Default ), alpha=0.5)+
+  facet_wrap(~variable,scales = "free" )
+chart
+
+#set2
+#names(set2)
+#set2=as.data.frame(set2)
+#set2=cbind(set2,Train$Default)
+#set2melt=melt(set2,id="Default")
+#gb=ggplot(set2melt,aes(value))
+#chart=gb+geom_density(aes(fill=Default ))+
+# facet_wrap(~variable,scales = "free" )
+#chart
+
+#set3
+gb=ggplot(set3melt,aes(value))
+chart=gb+geom_density(aes(fill=Default ), alpha=0.5)+
+  facet_wrap(~variable,scales = "free" )
+chart
+
+#set4
+gb=ggplot(set4melt,aes(value))
+chart=gb+geom_density(aes(fill=Default ), alpha=0.5)+
+  facet_wrap(~variable,scales = "free" )
+chart
+
+#set5
+gb=ggplot(set5melt,aes(value))
+chart=gb+geom_density(aes(fill=Default ), alpha=0.5)+
+  facet_wrap(~variable,scales = "free" )
+chart
+
+#set6
+gb=ggplot(set6melt,aes(value))
+chart=gb+geom_density(aes(fill=Default ), alpha=0.5)+
+  facet_wrap(~variable,scales = "free" )
+chart
+
+#set7
+gb=ggplot(set7melt,aes(value))
+chart=gb+geom_density(aes(fill=Default ), alpha=0.5)+
+  facet_wrap(~variable,scales = "free" )
+chart
+
+#set8
+gb=ggplot(set8melt,aes(value))
+chart=gb+geom_density(aes(fill=Default ), alpha=0.5)+
+  facet_wrap(~variable,scales = "free" )
+chart
+
+#set9
+gb=ggplot(set9melt,aes(value))
+chart=gb+geom_density(aes(fill=Default ), alpha=0.5)+
+  facet_wrap(~variable,scales = "free" )
+chart
+```
+
+
+```{r}
+#checking for important variables
+LogModel=glm(Default~
+               Net.worth+
+               Change.in.stock+
+               Profit.after.tax+
+               PBDITA+
+               Cash.profit+
+               PBDITA.as...of.total.income+
+               PAT.as...of.total.income+
+               PAT.as...of.net.worth+
+               Sales+
+               Other.income+
+               Reserves.and.funds+
+               Current.liabilities...provisions+
+               Deferred.tax.liability+
+               Cumulative.retained.profits+
+               TOL.TNW+
+               Total.term.liabilities...tangible.net.worth+
+               Contingent.liabilities+
+               Net.fixed.assets+
+               Investments+
+               Net.working.capital+
+               Quick.ratio..times.+
+               Current.ratio..times.+
+               Debt.to.equity.ratio..times.+
+               Creditors.turnover+
+               Debtors.turnover+
+               Finished.goods.turnover+
+               WIP.turnover+
+               Raw.material.turnover+
+               Adjusted.EPS+
+               PE.on.BSE+
+               PriceperShare+
+               NetWC2TotAsset+
+               NetWorth2TotAssets+
+               TotalIncome2TotalAssets+
+               Total.expenses2TotalAssets+
+               PAT2TotalAssets+
+               Sales2TotalAssets+
+               Currentliabilities2Assets+
+               CapitalEmployed2TotalAssets+
+               NetfixedAssets2TotalAssets+
+               Investments2TotalAssets+
+               Cash.to.average.cost.of.sales.per.day+
+               Cash.profit.as...of.total.income
+             ,family="binomial",data=Train)
+summary(LogModel)
+vif(LogModel)
+```
+
+```{r}
+#Finalised columns
+finalTrain=Train[c("Default",
+                   "Net.worth",
+                   "Change.in.stock",
+                   "Profit.after.tax",
+                   "PBDITA",
+                   "Cash.profit",
+                   "PBDITA.as...of.total.income",
+                   "PAT.as...of.total.income",
+                   "PAT.as...of.net.worth",
+                   "Sales",
+                   "Other.income",
+                   "Reserves.and.funds",
+                   "Current.liabilities...provisions",
+                   "Deferred.tax.liability",
+                   "Cumulative.retained.profits",
+                   "TOL.TNW",
+                   "Total.term.liabilities...tangible.net.worth",
+                   "Contingent.liabilities",
+                   "Net.fixed.assets",
+                   "Investments",
+                   "Net.working.capital",
+                   "Quick.ratio..times.",
+                   "Current.ratio..times.",
+                   "Debt.to.equity.ratio..times.",
+                   "Creditors.turnover",
+                   "Debtors.turnover",
+                   "Finished.goods.turnover",
+                   "WIP.turnover",
+                   "Raw.material.turnover",
+                   "Adjusted.EPS",
+                   "PE.on.BSE",
+                   "PriceperShare",
+                   "NetWC2TotAsset",
+                   "NetWorth2TotAssets",
+                   "TotalIncome2TotalAssets",
+                   "Total.expenses2TotalAssets",
+                   "PAT2TotalAssets",
+                   "Sales2TotalAssets",
+                   "Currentliabilities2Assets",
+                   "CapitalEmployed2TotalAssets",
+                   "NetfixedAssets2TotalAssets",
+                   "Investments2TotalAssets",
+                   "Cash.to.average.cost.of.sales.per.day",
+                   "Cash.profit.as...of.total.income")]
+
+```
+
+
+```{r}
+#Building Logistic Regression Model
+attach(finalTrain)
+LogModel=glm(Default~.,family="binomial",data=finalTrain)
+summary(LogModel)
+vif(LogModel)
+```
+
+
+```{r}
+#Making Predictions on Train Dataset
+logPred <- predict.glm(LogModel, finalTrain, type="response")
+valuesTrain= ifelse(logPred >0.5,1,0)
+valuesTrain=as.factor(valuesTrain)
+confusionMatrix(finalTrain$Default,valuesTrain)
+roc.logit<-roc(finalTrain$Default,logPred ,print.auc=TRUE, show.thres=TRUE,plot=TRUE,main="ROC Curve for Train Dataset",col="Red")
+```
+
+
+```{r}
+#Making Predictions on Validation Dataset
+logPred <- predict.glm(LogModel, Validation, type="response")
+valuesTest= ifelse(logPred >0.5,1,0)
+valuesTest=as.factor(valuesTest)
+confusionMatrix(Validation$Default,valuesTest)
+roc.logit<-roc(Validation$Default,logPred ,print.auc=TRUE, show.thres=TRUE,plot=TRUE,main="ROC Curve for Test Dataset",col="Red")
+```
+
+
+```{r}
+#probability of default addding into the actual dataframe
+finalTrain$pred = predict(LogModel, finalTrain, type="response")
+Validation$pred = predict(LogModel, Validation, type="response")
+```
+
+
+```{r}
+#creating deciles
+decile <- function(x)
+{
+  #vector of 10 buckets(deciles)
+  deciles <- vector(length=10)
+  
+  #10 deciles with from 0.1 to 1 with 0.1 interval. i.e 0.1, 0.2,0.3 etc
+  for (i in seq(0.1,1,.1))
+  {
+    #converting deciles to %
+    deciles[i*10] <- quantile(x, i)
+  }
+  return (
+  #whch decile the probability falls into 
+    ifelse(x<deciles[1], 1,
+           ifelse(x<deciles[2], 2,
+                  ifelse(x<deciles[3], 3,
+                         ifelse(x<deciles[4], 4,
+                                ifelse(x<deciles[5], 5,
+                                       ifelse(x<deciles[6], 6,
+                                              ifelse(x<deciles[7], 7,
+                                                     ifelse(x<deciles[8],8,
+                                                        ifelse(x<deciles[9], 9, 10
+                                                            ))))))))))
+}
+```
+
+
+```{r}
+#adding deciles to dataframe and bucketing the probabilities into deciles
+finalTrain$deciles <- decile(finalTrain$pred)
+Validation$deciles <- decile(Validation$pred)
+```
+
+
+```{r}
+#creating a datatable for train and test
+tmp_Train = data.table(finalTrain)
+tmp_Validation = data.table(Validation)
+```
+
+
+```{r}
+#sorting in descending order based on probability and counting in each decile
+#the number of defaulters and non defaulters
+rankTrain <- tmp_Train[, list(cnt=length(Default),
+                      cnt_resp=sum(Default==1), 
+                      cnt_non_resp=sum(Default==0)),
+                      by=deciles][order(-deciles)]
+```
+
+
+```{r}
+#total customers in deciles
+rankTrain$rrate = round(rankTrain$cnt_resp / rankTrain$cnt,4)
+#% of Defaulters in decile
+rankTrain$cum_resp = cumsum(rankTrain$cnt_resp) 
+#% of non-Defaulters in decile
+rankTrain$cum_non_resp = cumsum(rankTrain$cnt_non_resp)
+#cumulative response of defaulters in deciles
+rankTrain$cum_rel_resp = round(rankTrain$cum_resp / sum(rankTrain$cnt_resp),4)
+#cumulative response of non-defaulters in deciles
+rankTrain$cum_rel_non_resp = round(rankTrain$cum_non_resp / sum(rankTrain$cnt_non_resp),4)
+
+#calculating KS as the difference of defaultesr and non-defaulters
+rankTrain$ks = abs(rankTrain$cum_rel_resp - rankTrain$cum_rel_non_resp) * 100;
+
+#Calculating the % for each
+rankTrain$rrate <- percent(rankTrain$rrate)
+rankTrain$cum_rel_resp <- percent(rankTrain$cum_rel_resp) 
+rankTrain$cum_rel_non_resp <- percent(rankTrain$cum_rel_non_resp) 
+newTrainrank<-rankTrain
+
+#viewing the data table
+View(newTrainrank)
+```
+
+
+```{r}
+#sorting in descending order based on probability and counting in each decile
+#the number of defaulters and non defaulters
+rankValidation <- tmp_Validation[, list(cnt=length(Default),
+                           cnt_resp=sum(Default==1), 
+                           cnt_non_resp=sum(Default==0)),
+                    by=deciles][order(-deciles)]
+```
+
+```{r}
+#total customers in deciles
+rankValidation$rrate = round(rankValidation$cnt_resp / rankValidation$cnt,4)
+#% of Defaulters in decile
+rankValidation$cum_resp = cumsum(rankValidation$cnt_resp) 
+#% of non-Defaulters in decile
+rankValidation$cum_non_resp = cumsum(rankValidation$cnt_non_resp)
+#cumulative response of defaulters in deciles
+rankValidation$cum_rel_resp = round(rankValidation$cum_resp / sum(rankValidation$cnt_resp),4)
+#cumulative response of non-defaulters in deciles
+rankValidation$cum_rel_non_resp = round(rankValidation$cum_non_resp / sum(rankValidation$cnt_non_resp),4)
+
+#calculating KS as the difference of defaultesr and non-defaulters
+rankValidation$ks = abs(rankValidation$cum_rel_resp - rankValidation$cum_rel_non_resp) * 100;
+
+#Calculating the % for each
+rankValidation$rrate <- percent(rankValidation$rrate)
+rankValidation$cum_rel_resp <- percent(rankValidation$cum_rel_resp) 
+rankValidation$cum_rel_non_resp <- percent(rankValidation$cum_rel_non_resp) 
+newValidationrank<-rankValidation
+
+#viewing the data table
+View(newValidationrank)
+
+```
+
+
+```{r}
+# cut_p returns the cut internal for each observation
+cut_ptrain = with(finalTrain,
+                  cut(pred, breaks = quantile(pred, prob=seq(0,1,0.1)), include.lowest = T))
+
+cut_pValidation = with(Validation,cut(pred, breaks = quantile(pred, prob=seq(0,1,0.1)), include.lowest = T))
+
+levels(cut_ptrain)
+levels(cut_pValidation)
+
+```
+
+
+```{r}
+#converitng the aggregated data into factors
+finalTrain$rank = factor(cut_ptrain, labels = 1:10) 
+Validation$rank = factor(cut_pValidation, labels = 1:10)
+```
+
+
+```{r}
+# get aggregated data for plotting
+mean.obs.train = aggregate(Default ~ rank, data = finalTrain, mean) 
+mean.pred.train = aggregate(pred ~ rank, data = finalTrain, mean)
+mean.obs.val = aggregate( Default~ rank, data = Validation, mean) 
+mean.pred.val = aggregate(pred ~ rank, data = Validation, mean)
+```
+
+```{r}
+k <- blr_gains_table(LogModel)
+blr_ks_chart(k, title = "KS Chart",
+             yaxis_title = " ",xaxis_title = "Cumulative Population %",
+             ks_line_color = "black")
+
+```
+
+```{r}
+
+# plot the mean vs deciles par(mfrow=c(1,2))
+plot(mean.obs.train[,2], type="b", col="black", ylim=c(0,0.8), 
+     xlab="Decile", ylab="Prob") 
+lines(mean.pred.train[,2], type="b", col="red", lty=2)
+title(main="Training data deciles plot")
+
+
+plot(mean.obs.val[,2], type="b", col="black", ylim=c(0,0.8),
+     xlab="Decile", ylab="Prob") 
+lines(mean.pred.val[,2], type="b", col="red", lty=2)
+title(main="Testind data deciles plot Sample")
+```
+
